@@ -1,4 +1,4 @@
-use crate::super::{body::Body, integrator::Integrator, vec2::Vec2};
+use super::{body::Body, integrator::Integrator, vec2::Vec2};
 
 pub struct World {
     pub bodies: Vec<Body>,

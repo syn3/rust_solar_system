@@ -1,4 +1,4 @@
-use crate::super::vec2::Vec2;
+use super::vec2::Vec2;
 
 #[derive(Clone)]
 pub struct Body {

@@ -3,10 +3,10 @@ mod ui;
 
 use macroquad::prelude::*;
 
+use physics::body::Body;
 use physics::integrator::Integrator;
 use physics::vec2::Vec2;
 use physics::world::World;
-use src::physics::body::Body;
 
 use ui::panel::PanelState;
 
