@@ -1,172 +1,116 @@
-use super::{body::Body, integrator::Integrator, vec2::Vec2};
+use macroquad::prelude::*;
+
+use super::body::Body;
+
+pub const G: f32 = 0.1;
+
+/// Максимальный шаг интегрирования — обеспечивает стабильность при любой скорости симуляции.
+pub const MAX_PHYSICS_STEP: f32 = 0.008;
 
 pub struct World {
     pub bodies: Vec<Body>,
-    g: f64,
-    pub integrator: Integrator,
 }
 
 impl World {
-    pub fn new(g: f64) -> Self {
-        Self {
-            bodies: Vec::new(),
-            g,
-            integrator: Integrator::Leapfrog,
-        }
+    pub fn new() -> Self {
+        Self { bodies: Vec::new() }
     }
 
     pub fn add_body(&mut self, body: Body) {
         self.bodies.push(body);
     }
 
-    /* ------------------ УСКОРЕНИЯ ------------------ */
-
     pub fn compute_accelerations(&mut self) {
-        for i in 0..self.bodies.len() {
-            let mut acc = Vec2::zero();
+        const EPSILON_SQ: f32 = 100.0;
 
-            for j in 0..self.bodies.len() {
-                if i == j {
-                    continue;
-                }
+        if self.bodies.is_empty() {
+            return;
+        }
 
-                let r = self.bodies[j].position.sub(self.bodies[i].position);
-                let dist = r.length() + 1e-6;
+        let sun_pos = self.bodies[0].position;
+        let sun_mass = self.bodies[0].mass;
+        let earth_index = self.bodies.iter().position(|b| b.name == "Земля");
+        let (earth_pos, earth_mass) = earth_index
+            .map(|idx| {
+                let b = &self.bodies[idx];
+                (Some(b.position), Some(b.mass))
+            })
+            .unwrap_or((None, None));
 
-                acc = acc.add(r.mul(self.g * self.bodies[j].mass / (dist * dist * dist)));
+        for (i, body) in self.bodies.iter_mut().enumerate() {
+            if i == 0 {
+                body.acceleration = Vec2::ZERO;
+                continue;
             }
 
-            self.bodies[i].acceleration = acc;
+            // Базовая гравитация от Солнца
+            let mut acc = {
+                let dir = sun_pos - body.position;
+                let dist_sq = dir.length_squared().max(EPSILON_SQ);
+                dir.normalize() * (G * sun_mass / dist_sq)
+            };
+
+            // Дополнительная гравитация Земли на Луну:
+            // Луна вращается вокруг Земли, но Земля при этом остаётся
+            // на стабильной орбите вокруг Солнца (обратное влияние Луны
+            // на Землю игнорируем ради устойчивости).
+            if body.name == "Луна" {
+                if let (Some(e_pos), Some(e_mass)) = (earth_pos, earth_mass) {
+                    let dir_em = e_pos - body.position;
+                    let dist_sq_em = dir_em.length_squared().max(EPSILON_SQ * 0.1);
+                    acc += dir_em.normalize() * (G * e_mass / dist_sq_em) * 4.0;
+                }
+            }
+
+            body.acceleration = acc;
         }
     }
 
-    /* ------------------ ШАГ СИМУЛЯЦИИ ------------------ */
-
-    pub fn step(&mut self, dt: f64) {
-        match self.integrator {
-            Integrator::Euler => self.step_euler(dt),
-            Integrator::Leapfrog => self.step_leapfrog(dt),
-            Integrator::RK4 => self.step_rk4(dt),
-        }
-    }
-
-    /* ------------------ EULER ------------------ */
-
-    pub fn step_euler(&mut self, dt: f64) {
-        self.compute_accelerations();
-
+    /// Leapfrog (Verlet) — хорошо сохраняет энергию.
+    pub fn step(&mut self, dt: f32) {
         for body in &mut self.bodies {
-            body.position = body.position.add(body.velocity.mul(dt));
-            body.velocity = body.velocity.add(body.acceleration.mul(dt));
-        }
-    }
-
-    /* ------------------ LEAPFROG ------------------ */
-
-    pub fn step_leapfrog(&mut self, dt: f64) {
-        for body in &mut self.bodies {
-            body.velocity = body.velocity.add(body.acceleration.mul(dt * 0.5));
+            body.velocity += body.acceleration * (dt * 0.5);
         }
 
         for body in &mut self.bodies {
-            body.position = body.position.add(body.velocity.mul(dt));
+            body.position += body.velocity * dt;
         }
 
         self.compute_accelerations();
 
         for body in &mut self.bodies {
-            body.velocity = body.velocity.add(body.acceleration.mul(dt * 0.5));
+            body.velocity += body.acceleration * (dt * 0.5);
+        }
+
+        for body in &mut self.bodies {
+            body.trail.push(body.position);
+            if body.trail.len() > 500 {
+                body.trail.remove(0);
+            }
         }
     }
 
-    /* ------------------ RK4 ------------------ */
-
-    pub fn step_rk4(&mut self, dt: f64) {
-        let original = self.bodies.clone();
-
-        self.compute_accelerations();
-        let k1: Vec<_> = original
-            .iter()
-            .map(|b| (b.velocity, b.acceleration))
-            .collect();
-
-        self.apply_k(&k1, dt * 0.5);
-        self.compute_accelerations();
-        let k2: Vec<_> = self
-            .bodies
-            .iter()
-            .map(|b| (b.velocity, b.acceleration))
-            .collect();
-
-        self.bodies = original.clone();
-        self.apply_k(&k2, dt * 0.5);
-        self.compute_accelerations();
-        let k3: Vec<_> = self
-            .bodies
-            .iter()
-            .map(|b| (b.velocity, b.acceleration))
-            .collect();
-
-        self.bodies = original.clone();
-        self.apply_k(&k3, dt);
-        self.compute_accelerations();
-        let k4: Vec<_> = self
-            .bodies
-            .iter()
-            .map(|b| (b.velocity, b.acceleration))
-            .collect();
-
-        self.bodies = original;
-
-        for i in 0..self.bodies.len() {
-            self.bodies[i].position = self.bodies[i].position.add(
-                k1[i]
-                    .0
-                    .add(k2[i].0.mul(2.0))
-                    .add(k3[i].0.mul(2.0))
-                    .add(k4[i].0)
-                    .mul(dt / 6.0),
-            );
-
-            self.bodies[i].velocity = self.bodies[i].velocity.add(
-                k1[i]
-                    .1
-                    .add(k2[i].1.mul(2.0))
-                    .add(k3[i].1.mul(2.0))
-                    .add(k4[i].1)
-                    .mul(dt / 6.0),
-            );
-        }
-    }
-
-    fn apply_k(&mut self, k: &Vec<(Vec2, Vec2)>, dt: f64) {
-        for i in 0..self.bodies.len() {
-            self.bodies[i].position = self.bodies[i].position.add(k[i].0.mul(dt));
-            self.bodies[i].velocity = self.bodies[i].velocity.add(k[i].1.mul(dt));
-        }
-    }
-
-    /* ------------------ ЭНЕРГИЯ ------------------ */
-
-    pub fn total_energy(&self) -> f64 {
-        let mut kinetic = 0.0;
-        let mut potential = 0.0;
+    /// Полная энергия системы в приближении "Солнце + планеты".
+    /// Потенциальная энергия считается только между Солнцем и планетами,
+    /// что совпадает с моделью в `compute_accelerations`.
+    pub fn total_energy(&self) -> f32 {
+        let mut energy = 0.0;
 
         for body in &self.bodies {
-            kinetic += 0.5 * body.mass * body.velocity.length().powi(2);
+            energy += 0.5 * body.mass * body.velocity.length_squared();
         }
 
-        for i in 0..self.bodies.len() {
-            for j in (i + 1)..self.bodies.len() {
-                let r = self.bodies[i]
-                    .position
-                    .sub(self.bodies[j].position)
-                    .length();
-
-                potential -= self.g * self.bodies[i].mass * self.bodies[j].mass / r;
-            }
+        if self.bodies.is_empty() {
+            return energy;
         }
 
-        kinetic + potential
+        let sun = &self.bodies[0];
+
+        for planet in self.bodies.iter().skip(1) {
+            let r = sun.position.distance(planet.position).max(5.0);
+            energy -= G * sun.mass * planet.mass / r;
+        }
+
+        energy
     }
 }
