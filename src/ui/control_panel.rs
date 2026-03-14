@@ -1,28 +1,12 @@
 use macroquad::prelude::*;
 
+use crate::ui::draw_text_ui;
+
 const PANEL_X: f32 = 20.0;
 const PANEL_Y: f32 = 130.0;
 const PANEL_WIDTH: f32 = 260.0;
 const ROW_HEIGHT: f32 = 28.0;
 const PADDING: f32 = 10.0;
-
-fn draw_text_ui(text: &str, x: f32, y: f32, font_size: u16, color: Color, font: Option<&Font>) {
-    if let Some(f) = font {
-        draw_text_ex(
-            text,
-            x,
-            y,
-            TextParams {
-                font_size,
-                font: Some(f),
-                color,
-                ..Default::default()
-            },
-        );
-    } else {
-        draw_text(text, x, y, font_size as f32, color);
-    }
-}
 
 fn button_row(
     row_y: &mut f32,

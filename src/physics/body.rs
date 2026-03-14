@@ -1,6 +1,7 @@
 use macroquad::prelude::*;
 
 use crate::nasa_data::NasaData;
+use super::new_trail;
 
 #[derive(Clone)]
 pub struct Body {
@@ -32,7 +33,7 @@ impl Body {
             mass,
             radius,
             color,
-            trail: Vec::new(),
+            trail: new_trail().into(),
             nasa_data: None,
         }
     }
