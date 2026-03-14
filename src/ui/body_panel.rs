@@ -1,6 +1,7 @@
 use macroquad::prelude::*;
 
 use crate::physics::body::Body;
+use crate::ui::draw_text_ui;
 
 const PANEL_WIDTH: f32 = 240.0;
 const ROW_HEIGHT: f32 = 28.0;
@@ -8,24 +9,6 @@ const PADDING: f32 = 12.0;
 const FONT_SIZE_LIST: u16 = 18;
 const FONT_SIZE_TITLE: u16 = 20;
 const FONT_SIZE_PARAM: u16 = 16;
-
-fn draw_text_ui(text: &str, x: f32, y: f32, font_size: u16, color: Color, font: Option<&Font>) {
-    if let Some(f) = font {
-        draw_text_ex(
-            text,
-            x,
-            y,
-            TextParams {
-                font_size,
-                font: Some(f),
-                color,
-                ..Default::default()
-            },
-        );
-    } else {
-        draw_text(text, x, y, font_size as f32, color);
-    }
-}
 
 /// Рисует панель выбора тел и возвращает индекс выбранного при клике.
 /// selected — текущий выбранный индекс.
